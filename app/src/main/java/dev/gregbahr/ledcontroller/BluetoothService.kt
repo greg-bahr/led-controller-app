@@ -169,7 +169,13 @@ class BluetoothService : LifecycleService() {
             startActivity(enableBtIntent)
         }
 
-        startScan()
+        val device = bluetoothAdapter.bondedDevices.find { it.name == "LED Reciever" }
+        if (device != null) {
+            this.ledControllerDevice = device
+            connectGatt()
+        } else {
+            startScan()
+        }
     }
 
     fun startScan() {
