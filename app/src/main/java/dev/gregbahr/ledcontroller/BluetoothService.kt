@@ -55,6 +55,11 @@ class BluetoothService : LifecycleService() {
         gatt.writeCharacteristic(animationCharacteristic)
     }
 
+    fun writeColor(array: ByteArray) {
+        colorCharacteristic.value = array
+        gatt.writeCharacteristic(colorCharacteristic)
+    }
+
     private val ledControllerScanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             super.onScanResult(callbackType, result)
@@ -107,10 +112,12 @@ class BluetoothService : LifecycleService() {
                     )
                 }
                 colorCharacteristic -> {
-                    val h = characteristic.value.get(0).toUByte().toString(16)
-                    val s = characteristic.value.get(1).toUByte().toString(16)
-                    val v = characteristic.value.get(2).toUByte().toString(16)
-                    Log.i(TAG, "Color: $h, $s, $v")
+                    val h = characteristic.value.get(0).toUByte()
+                    val s = characteristic.value.get(1).toUByte()
+                    val v = characteristic.value.get(2).toUByte()
+                    Log.i(TAG, "Color: ${h.toString(16)}, ${s.toString(16)}, ${v.toString(16)}")
+
+                    ledControllerRepository.color.postValue(byteArrayOf(h.toByte(), s.toByte(), v.toByte()))
                     gatt?.readCharacteristic(animationCharacteristic)
                 }
             }

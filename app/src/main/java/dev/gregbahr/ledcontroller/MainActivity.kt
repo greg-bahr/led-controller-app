@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
 import android.os.IBinder
 import android.view.View
@@ -13,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Observer
+import com.rarepebble.colorpicker.ColorPickerView
 import dagger.android.AndroidInjection
 import java.util.*
 import javax.inject.Inject
@@ -169,5 +171,30 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        var firstColorPicked = false
+        val colorPickerView: ColorPickerView = findViewById(R.id.colorPicker)
+        colorPickerView.addColorObserver { observableColor ->
+            if (firstColorPicked) {
+                val h = ((observableColor.hue / 360) * 255).toByte().toUByte()
+                val s = (observableColor.sat * 255).toByte().toUByte()
+                val v = (observableColor.value * 255).toByte().toUByte()
+
+                ledViewModel.ledControllerRepository.color.postValue(byteArrayOf(h.toByte(), s.toByte(), v.toByte()))
+            }
+        }
+        ledViewModel.ledControllerRepository.color.observe(this, Observer<ByteArray> { arr ->
+            if (!firstColorPicked) {
+                colorPickerView.color = Color.HSVToColor(
+                    floatArrayOf(
+                        (arr[0].toUByte().toFloat() / 255) * 360,
+                        arr[1].toUByte().toFloat() / 255,
+                        arr[2].toUByte().toFloat() / 255
+                    )
+                )
+                firstColorPicked = true
+            } else {
+                btService.writeColor(arr)
+            }
+        })
     }
 }
