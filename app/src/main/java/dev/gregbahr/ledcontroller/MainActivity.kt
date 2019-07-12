@@ -7,8 +7,8 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.IBinder
-import android.widget.SeekBar
-import android.widget.TextView
+import android.view.View
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -25,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     lateinit var ledViewModel: LedViewModel
     private lateinit var btService: BluetoothService
     private var brightnessSliderDebounceTimer = Timer()
+    private var delayTimeSliderDebounceTimer = Timer()
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -84,11 +85,12 @@ class MainActivity : AppCompatActivity() {
             brightnessSliderDebounceTimer = Timer()
             seekBar.progress = brightness
             brightnessTextView.text = resources.getString(R.string.brightness, brightness)
+            btService.writeBrightness(brightness)
             brightnessSliderDebounceTimer.schedule(object : TimerTask() {
                 override fun run() {
                     btService.writeBrightness(brightness)
                 }
-            }, 50)
+            }, 250)
         })
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -104,5 +106,68 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         })
+
+        var firstSelectDone = false
+        val spinner: Spinner = findViewById(R.id.animation_spinner)
+        ArrayAdapter.createFromResource(this, R.array.animations, android.R.layout.simple_spinner_item)
+            .also { adapter ->
+                adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                spinner.adapter = adapter
+            }
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (firstSelectDone) {
+                    ledViewModel.ledControllerRepository.animation.postValue(position)
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                return
+            }
+        }
+        ledViewModel.ledControllerRepository.animation.observe(this, Observer<Int> { animationType ->
+            if (!firstSelectDone) {
+                spinner.setSelection(animationType)
+                firstSelectDone = true
+            } else {
+                btService.writeAnimation(animationType)
+            }
+        })
+
+        val delayTimeTextView: TextView = findViewById(R.id.delayTime)
+        delayTimeTextView.text = "50"
+
+        val delayTimeSeekBar: SeekBar = findViewById(R.id.delayBar)
+        delayTimeSeekBar.min = 1
+        delayTimeSeekBar.max = 255
+        delayTimeSeekBar.progress = 50
+
+        ledViewModel.ledControllerRepository.delayTime.observe(this, Observer<Int> { delayTime ->
+            delayTimeSliderDebounceTimer.cancel()
+            delayTimeSliderDebounceTimer = Timer()
+            delayTimeSeekBar.progress = delayTime
+            delayTimeTextView.text = delayTime.toString()
+            btService.writeDelayTime(delayTime)
+            delayTimeSliderDebounceTimer.schedule(object : TimerTask() {
+                override fun run() {
+                    btService.writeDelayTime(delayTime)
+                }
+            }, 250)
+        })
+
+        delayTimeSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                ledViewModel.ledControllerRepository.delayTime.postValue(progress)
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                return
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                return
+            }
+        })
+
     }
 }

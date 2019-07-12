@@ -40,15 +40,19 @@ class BluetoothService : LifecycleService() {
     @Inject
     lateinit var ledControllerRepository: LedControllerRepository
 
-    private val timer: Timer = Timer()
-
-    fun getBrightness(): Int {
-        return brightnessCharacteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT8, 0)
-    }
-
     fun writeBrightness(brightness: Int) {
         brightnessCharacteristic.value = byteArrayOf(brightness.toByte())
         gatt.writeCharacteristic(brightnessCharacteristic)
+    }
+
+    fun writeDelayTime(delayTime: Int) {
+        delayCharacteristic.value = byteArrayOf(delayTime.toByte())
+        gatt.writeCharacteristic(delayCharacteristic)
+    }
+
+    fun writeAnimation(animationType: Int) {
+        animationCharacteristic.value = byteArrayOf(animationType.toByte())
+        gatt.writeCharacteristic(animationCharacteristic)
     }
 
     private val ledControllerScanCallback = object : ScanCallback() {
@@ -90,10 +94,17 @@ class BluetoothService : LifecycleService() {
                 }
                 animationCharacteristic -> {
                     Log.i(TAG, "Animation: " + characteristic.value.get(0))
+                    ledControllerRepository.animation.postValue(animationCharacteristic.value.get(0).toInt())
                     gatt?.readCharacteristic(delayCharacteristic)
                 }
                 delayCharacteristic -> {
                     Log.i(TAG, "Delay: " + characteristic.value.get(0))
+                    ledControllerRepository.delayTime.postValue(
+                        delayCharacteristic.getIntValue(
+                            BluetoothGattCharacteristic.FORMAT_UINT8,
+                            0
+                        )
+                    )
                 }
                 colorCharacteristic -> {
                     val h = characteristic.value.get(0).toUByte().toString(16)

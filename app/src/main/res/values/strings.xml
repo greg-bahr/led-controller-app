@@ -1,4 +1,12 @@
 <resources>
     <string name="app_name">LED Controller</string>
     <string name="brightness">Brightness: %d</string>
+    <string name="delay">Delay:</string>
+    <string name="animation">Animation:</string>
+    <string-array name="animations">
+        <item>Meteor</item>
+        <item>Solid</item>
+        <item>Wipe</item>
+        <item>Fade</item>
+    </string-array>
 </resources>
