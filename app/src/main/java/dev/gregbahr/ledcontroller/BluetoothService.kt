@@ -1,12 +1,10 @@
 package dev.gregbahr.ledcontroller
 
 import android.bluetooth.*
-import android.bluetooth.le.*
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
-import android.os.ParcelUuid
 import android.util.Log
 import androidx.lifecycle.LifecycleService
 import dagger.android.AndroidInjection
@@ -16,19 +14,24 @@ import javax.inject.Inject
 class BluetoothService : LifecycleService() {
 
     private val TAG = "BluetoothService"
-    private val binder: IBinder = LocalBinder()
+    private val binder = BluetoothBinder()
+
+    var isConnected: Boolean = false
+        private set
+
+    var isBonded: Boolean = false
+        private set
 
     private lateinit var bluetoothManager: BluetoothManager
     private lateinit var bluetoothAdapter: BluetoothAdapter
-    private lateinit var btLeScanner: BluetoothLeScanner
     private lateinit var ledControllerDevice: BluetoothDevice
     private lateinit var ledControllerGatt: BluetoothGatt
 
-    private val LED_CONTROLLER_BRIGHTNESS_CHARACTERISTIC_ID = UUID.fromString("de6e22e4-07a0-4924-bc3c-a054ed998e31")
-    private val LED_CONTROLLER_ANIMATION_CHARACTERISTIC_ID = UUID.fromString("a96ac45a-57af-4b56-b92d-e9dfb800b521")
-    private val LED_CONTROLLER_COLOR_CHARACTERISTIC_ID = UUID.fromString("75e42479-5c7e-494d-b391-1d1311153bf5")
-    private val LED_CONTROLLER_DELAYTIME_CHARACTERISTIC_ID = UUID.fromString("778decdc-ef0f-4151-9ab6-000150d7d21a")
-    private val LED_CONTROLLER_SERVICE_ID = UUID.fromString("318e961b-a7ba-4acf-95a3-11d94bf554b1")
+    private val LED_CONTROLLER_BRIGHTNESS_CHARACTERISTIC = UUID.fromString(LED_CONTROLLER_BRIGHTNESS_CHARACTERISTIC_UUID)
+    private val LED_CONTROLLER_ANIMATION_CHARACTERISTIC = UUID.fromString(LED_CONTROLLER_ANIMATION_CHARACTERISTIC_UUID)
+    private val LED_CONTROLLER_COLOR_CHARACTERISTIC = UUID.fromString(LED_CONTROLLER_COLOR_CHARACTERISTIC_UUID)
+    private val LED_CONTROLLER_DELAYTIME_CHARACTERISTIC = UUID.fromString(LED_CONTROLLER_DELAYTIME_CHARACTERISTIC_UUID)
+    private val LED_CONTROLLER_SERVICE = UUID.fromString(LED_CONTROLLER_SERVICE_UUID)
 
     private lateinit var gatt: BluetoothGatt
     private lateinit var brightnessCharacteristic: BluetoothGattCharacteristic
@@ -58,20 +61,6 @@ class BluetoothService : LifecycleService() {
     fun writeColor(array: ByteArray) {
         colorCharacteristic.value = array
         gatt.writeCharacteristic(colorCharacteristic)
-    }
-
-    private val ledControllerScanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult?) {
-            super.onScanResult(callbackType, result)
-
-            Log.i(TAG, result.toString())
-            if (result != null) {
-                result.device.createBond()
-                this@BluetoothService.ledControllerDevice = result.device
-                stopScan()
-                connectGatt()
-            }
-        }
     }
 
     private val ledControllerGattCallback = object : BluetoothGattCallback() {
@@ -147,17 +136,21 @@ class BluetoothService : LifecycleService() {
 
             if (gatt != null) {
                 this@BluetoothService.gatt = gatt
-                ledControllerService = gatt.getService(LED_CONTROLLER_SERVICE_ID)
+                ledControllerService = gatt.getService(LED_CONTROLLER_SERVICE)
+
                 brightnessCharacteristic =
-                    ledControllerService.getCharacteristic(LED_CONTROLLER_BRIGHTNESS_CHARACTERISTIC_ID)
-                colorCharacteristic = ledControllerService.getCharacteristic(LED_CONTROLLER_COLOR_CHARACTERISTIC_ID)
+                    ledControllerService.getCharacteristic(LED_CONTROLLER_BRIGHTNESS_CHARACTERISTIC)
+                colorCharacteristic =
+                    ledControllerService.getCharacteristic(LED_CONTROLLER_COLOR_CHARACTERISTIC)
                 animationCharacteristic =
-                    ledControllerService.getCharacteristic(LED_CONTROLLER_ANIMATION_CHARACTERISTIC_ID)
-                delayCharacteristic = ledControllerService.getCharacteristic(LED_CONTROLLER_DELAYTIME_CHARACTERISTIC_ID)
+                    ledControllerService.getCharacteristic(LED_CONTROLLER_ANIMATION_CHARACTERISTIC)
+                delayCharacteristic =
+                    ledControllerService.getCharacteristic(LED_CONTROLLER_DELAYTIME_CHARACTERISTIC)
 
                 Log.i(TAG, "LED service discovered.")
 
                 gatt.readCharacteristic(brightnessCharacteristic)
+                isConnected = true
             }
 
         }
@@ -170,6 +163,7 @@ class BluetoothService : LifecycleService() {
                 gatt?.discoverServices()
             } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
                 Log.i(TAG, "BluetoothGatt disconnected")
+                isConnected = false
             }
         }
     }
@@ -180,51 +174,48 @@ class BluetoothService : LifecycleService() {
 
         bluetoothManager = this.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = this.bluetoothManager.adapter
-        btLeScanner = this.bluetoothAdapter.bluetoothLeScanner
 
-        bluetoothAdapter.takeIf { !it.isEnabled }?.apply {
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            startActivity(enableBtIntent)
+        checkForBondedDevice()
+    }
+
+    override fun onBind(intent: Intent): IBinder? {
+        super.onBind(intent)
+
+        connectToBondedDevice()
+
+        return binder
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        super.onUnbind(intent)
+
+        if (isConnected) {
+            this.ledControllerGatt.disconnect()
+            this.ledControllerGatt.close()
         }
 
-        val device = bluetoothAdapter.bondedDevices.find { it.name == "LED Reciever" }
+        return false
+    }
+
+    fun checkForBondedDevice() {
+        val device = bluetoothAdapter.bondedDevices.find { it.name == "LED Receiver" }
+
         if (device != null) {
             this.ledControllerDevice = device
-            connectGatt()
+            isBonded = true
         } else {
-            startScan()
+            isBonded = false
         }
     }
 
-    fun startScan() {
-        val scanFilter = ScanFilter.Builder().setServiceUuid(ParcelUuid(LED_CONTROLLER_SERVICE_ID)).build()
-        btLeScanner.startScan(listOf(scanFilter), ScanSettings.Builder().build(), ledControllerScanCallback)
-    }
-
-    fun stopScan() {
-        btLeScanner.stopScan(ledControllerScanCallback)
-    }
-
-    fun connectGatt() {
-        this.ledControllerGatt =
-            this.ledControllerDevice.connectGatt(this, true, ledControllerGattCallback, BluetoothDevice.TRANSPORT_LE)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        btLeScanner.stopScan(ledControllerScanCallback)
-        this.ledControllerGatt.disconnect()
-        this.ledControllerGatt.close()
-    }
-
-    override fun onBind(intent: Intent?): IBinder? {
-        super.onBind(intent)
-        return this.binder
-    }
-
-    inner class LocalBinder : Binder() {
-        fun getService(): BluetoothService {
-            return this@BluetoothService
+    fun connectToBondedDevice() {
+        if (isBonded) {
+            this.ledControllerGatt =
+                this.ledControllerDevice.connectGatt(this, true, ledControllerGattCallback, BluetoothDevice.TRANSPORT_LE)
         }
+    }
+
+    inner class BluetoothBinder : Binder() {
+        fun getService(): BluetoothService = this@BluetoothService
     }
 }
