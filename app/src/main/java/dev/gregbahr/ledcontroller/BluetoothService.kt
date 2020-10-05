@@ -69,8 +69,8 @@ class BluetoothService : LifecycleService() {
             characteristic: BluetoothGattCharacteristic?,
             status: Int
         ) {
-            when (characteristic) {
-                brightnessCharacteristic -> {
+            when (characteristic?.uuid) {
+                brightnessCharacteristic.uuid -> {
                     Log.i(
                         TAG,
                         "Brightness: " + brightnessCharacteristic.getIntValue(
@@ -86,13 +86,13 @@ class BluetoothService : LifecycleService() {
                     )
                     gatt?.readCharacteristic(colorCharacteristic)
                 }
-                animationCharacteristic -> {
-                    Log.i(TAG, "Animation: " + characteristic.value.get(0))
+                animationCharacteristic.uuid -> {
+                    Log.i(TAG, "Animation: " + animationCharacteristic.value.get(0))
                     ledControllerRepository.animation.postValue(animationCharacteristic.value.get(0).toInt())
                     gatt?.readCharacteristic(delayCharacteristic)
                 }
-                delayCharacteristic -> {
-                    Log.i(TAG, "Delay: " + characteristic.value.get(0))
+                delayCharacteristic.uuid -> {
+                    Log.i(TAG, "Delay: " + delayCharacteristic.value.get(0))
                     ledControllerRepository.delayTime.postValue(
                         delayCharacteristic.getIntValue(
                             BluetoothGattCharacteristic.FORMAT_UINT8,
@@ -100,10 +100,10 @@ class BluetoothService : LifecycleService() {
                         )
                     )
                 }
-                colorCharacteristic -> {
-                    val h = characteristic.value.get(0).toUByte()
-                    val s = characteristic.value.get(1).toUByte()
-                    val v = characteristic.value.get(2).toUByte()
+                colorCharacteristic.uuid -> {
+                    val h = colorCharacteristic.value.get(0).toUByte()
+                    val s = colorCharacteristic.value.get(1).toUByte()
+                    val v = colorCharacteristic.value.get(2).toUByte()
                     Log.i(TAG, "Color: ${h.toString(16)}, ${s.toString(16)}, ${v.toString(16)}")
 
                     ledControllerRepository.color.postValue(byteArrayOf(h.toByte(), s.toByte(), v.toByte()))
